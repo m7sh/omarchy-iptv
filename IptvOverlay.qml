@@ -235,13 +235,26 @@ Item {
         Row {
           width: parent.width
           spacing: Style.space(12)
-          Text {
-            textFormat: Text.PlainText
-            text: "IPTV"
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.title
-            font.bold: true
+          Row {
+            spacing: Style.space(6)
+            anchors.verticalCenter: parent.verticalCenter
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: "󱛵"
+              color: Color.accent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+            }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              textFormat: Text.PlainText
+              text: "IPTV"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
           }
           Text {
             anchors.verticalCenter: parent.verticalCenter
@@ -363,7 +376,7 @@ Item {
                 Text {
                   anchors.centerIn: parent
                   visible: !overlayLogoImg.visible
-                  text: root.tab === "vod" ? "󰿎" : "󰑈"
+                  text: root.tab === "vod" ? "󰿎" : "󱛵"
                   color: root.mutedText
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body

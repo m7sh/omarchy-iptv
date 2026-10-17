@@ -206,13 +206,23 @@ Panel {
         RowLayout {
           width: parent.width
           spacing: Style.space(8)
-          Text {
-            textFormat: Text.PlainText
-            text: "IPTV"
-            color: root.contentForeground
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
+          RowLayout {
+            spacing: Style.space(6)
+            Text {
+              textFormat: Text.PlainText
+              text: "󱛵"
+              color: Color.accent
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.title
+            }
+            Text {
+              textFormat: Text.PlainText
+              text: "IPTV"
+              color: root.contentForeground
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
+            }
           }
           Text {
             Layout.fillWidth: true
@@ -632,7 +642,7 @@ Panel {
           Text {
             anchors.centerIn: parent
             visible: !logoImg.visible
-            text: "󰑈"
+            text: "󱛵"
             color: Color.muted
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
@@ -868,7 +878,7 @@ Panel {
           Text {
             anchors.centerIn: parent
             visible: !epgLogoImg.visible
-            text: "󰑈"
+            text: "󱛵"
             color: Color.muted
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption

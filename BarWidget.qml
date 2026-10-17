@@ -87,7 +87,10 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.playing ? "󰑈 ●" : "󰑈"
+    active: root.playing
+    activeColor: Color.accent
+    useActiveColor: true
+    text: root.playing ? "󱛵 ●" : "󱛵"
     tooltipText: (root.playing ? ("Playing: " + (svc ? svc.currentPlayingTitle : "")) : root.statusText)
       + (root.favCount > 0 ? " · ★" + root.favCount : "")
       + " — click browse · middle stop · right sync"
