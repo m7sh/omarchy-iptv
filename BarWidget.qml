@@ -83,14 +83,14 @@ BarWidget {
     function stop(): void { root.stopPlayback() }
   }
 
-  WidgetButton {
+  BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
+    text: "󱛵"
     active: root.playing
     activeColor: Color.accent
     useActiveColor: true
-    text: root.playing ? "󱛵 ●" : "󱛵"
     tooltipText: (root.playing ? ("Playing: " + (svc ? svc.currentPlayingTitle : "")) : root.statusText)
       + (root.favCount > 0 ? " · ★" + root.favCount : "")
       + " — click browse · middle stop · right sync"
@@ -98,6 +98,18 @@ BarWidget {
       if (b === Qt.RightButton) root.resync()
       else if (b === Qt.MiddleButton) root.stopPlayback()
       else root.togglePanel()
+    }
+
+    Rectangle {
+      visible: root.playing
+      width: Style.space(4)
+      height: Style.space(4)
+      radius: Style.space(2)
+      color: Color.accent
+      anchors.top: parent.top
+      anchors.right: parent.right
+      anchors.topMargin: Style.space(4)
+      anchors.rightMargin: Style.space(3)
     }
   }
 }
