@@ -12,17 +12,22 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   readonly property string configDir: home + "/.config/omarchy-iptv"
   readonly property string favPath: configDir + "/favorites.json"
+  readonly property string historyPath: configDir + "/history.json"
 
   property var channels: []
   property var vod: []
   property var liveGroups: ["All"]
   property var vodGroups: ["All"]
   property var favRows: []
+  property var history: []
   property var epgNow: []
   property var epgMap: ({})
   property bool epgLoaded: false
   property string statusLine: "IPTV"
   property string lastError: ""
+  property string favStatusMsg: ""
+  property string currentPlayingId: ""
+  property string currentPlayingTitle: ""
   property bool syncing: false
   property bool savingProvider: false
   property string vodGroup: "All"
@@ -96,14 +101,21 @@ Item {
 
   function play(id, title) {
     if (!id) return
-    var cmd = [root.playHelperPath(), "--id", String(id), "--title", title || "IPTV"]
+    var sid = String(id)
+    var cmd = [root.playHelperPath(), "--id", sid, "--title", title || "IPTV"]
     root.statusLine = title || "Playing"
+    root.currentPlayingId = sid
+    root.currentPlayingTitle = title || "IPTV"
+    root.recordHistory(sid, title)
     if (playProc.running) {
       playProc.pendingCommand = cmd
+      playProc.pendingId = sid
+      playProc.pendingTitle = title || "IPTV"
       playProc.stopRequested = true
       playProc.running = false
     } else {
       playProc.currentTitle = title || "IPTV"
+      playProc.currentId = sid
       playProc.command = cmd
       playProc.running = true
     }
@@ -111,8 +123,13 @@ Item {
 
   function stop() {
     playProc.pendingCommand = null
+    playProc.pendingId = ""
+    playProc.pendingTitle = ""
     playProc.stopRequested = true
     playProc.running = false
+    root.currentPlayingId = ""
+    root.currentPlayingTitle = ""
+    root.updateStatus()
   }
 
   function playChannel(ch) {
@@ -170,11 +187,45 @@ Item {
   }
 
   function saveFavorites() {
-    favFile.setText(JSON.stringify(root.favorites) + "\n")
+    favFile.setText(JSON.stringify(root.favorites, null, 2) + "\n")
+  }
+
+  function moveFav(kind, id, delta) {
+    root.favorites = Model.moveFav(root.favorites, kind, id, delta)
+    saveFavorites()
+    refreshFavRows()
   }
 
   function favItems(kind) {
     return Model.resolveFavs(root.favorites, kind, root.favRows)
+  }
+
+  function recordHistory(id, title) {
+    var item = { id: id, name: title || id }
+    for (var i = 0; i < root.channels.length; i++) {
+      if (String(root.channels[i].id) === String(id)) {
+        item.logo = root.channels[i].logo || ""
+        item.group = root.channels[i].group || ""
+        break
+      }
+    }
+    root.history = Model.addToHistory(root.history, item)
+    historyFile.setText(JSON.stringify(root.history, null, 2) + "\n")
+  }
+
+  function clearHistory() {
+    root.history = []
+    historyFile.setText("[]\n")
+  }
+
+  function exportFavorites(dest) {
+    exportFavProc.command = [root.helperPath(), "--export-favs", dest || ""]
+    exportFavProc.running = true
+  }
+
+  function importFavorites(src) {
+    importFavProc.command = [root.helperPath(), "--import-favs", src || ""]
+    importFavProc.running = true
   }
 
   function refreshFavRows() {
@@ -201,8 +252,11 @@ Item {
     running: false
     command: []
     property var pendingCommand: null
+    property string pendingId: ""
+    property string pendingTitle: ""
     property bool stopRequested: false
     property string currentTitle: ""
+    property string currentId: ""
     stderr: StdioCollector { id: playErr; waitForEnd: true }
     onExited: function(code, status) {
       var failed = !stopRequested && status === 0 && code !== 0 && code !== 4
@@ -215,11 +269,18 @@ Item {
       stopRequested = false
       if (pendingCommand) {
         command = pendingCommand
-        currentTitle = pendingCommand[4] || "IPTV"
+        currentTitle = pendingTitle || "IPTV"
+        currentId = pendingId || ""
+        root.currentPlayingId = currentId
+        root.currentPlayingTitle = currentTitle
         pendingCommand = null
+        pendingTitle = ""
+        pendingId = ""
         running = true
-      } else if (!failed) {
-        root.updateStatus()
+      } else {
+        root.currentPlayingId = ""
+        root.currentPlayingTitle = ""
+        if (!failed) root.updateStatus()
       }
     }
   }
@@ -417,4 +478,63 @@ Item {
       root.refreshFavRows()
     }
   }
+
+  FileView {
+    id: historyFile
+    path: root.historyPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: {
+      try {
+        var h = JSON.parse(text() || "[]")
+        root.history = Array.isArray(h) ? h : []
+      } catch (e) { root.history = [] }
+    }
+  }
+
+  Process {
+    id: exportFavProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.favStatusMsg = (text || "Favorites exported").trim()
+      }
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (text && text.trim()) root.favStatusMsg = text.trim()
+      }
+    }
+  }
+
+  Process {
+    id: importFavProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.favStatusMsg = (text || "Favorites imported").trim()
+        if (favFile.reload) favFile.reload()
+        else {
+          try {
+            var v = JSON.parse(favFile.text() || "[]")
+            root.favorites = Array.isArray(v) ? v : []
+          } catch (e) {}
+          root.refreshFavRows()
+        }
+      }
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (text && text.trim()) root.favStatusMsg = text.trim()
+      }
+    }
+  }
 }
+

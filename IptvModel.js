@@ -1,13 +1,38 @@
 function filterChannels(channels, query, group) {
-  var q = String(query || "").toLowerCase();
-  // A category name is a search shortcut only while no group is picked; inside
-  // a group every row would trivially match its own group name.
+  var q = String(query || "").trim().toLowerCase();
   var wide = !group || group === "All";
+  var tokens = q ? q.split(/\s+/) : [];
   return (channels || []).filter(function (c) {
     if (!wide && c.group !== group) return false;
-    if (!q) return true;
-    if (String(c.name || "").toLowerCase().indexOf(q) !== -1) return true;
-    return wide && String(c.group || "Ungrouped").toLowerCase().indexOf(q) !== -1;
+    if (tokens.length === 0) return true;
+    var name = String(c.name || "").toLowerCase();
+    var grp = wide ? String(c.group || "Ungrouped").toLowerCase() : "";
+    return tokens.every(function (t) {
+      return name.indexOf(t) !== -1 || (wide && grp.indexOf(t) !== -1);
+    });
+  });
+}
+
+function filterEpg(epgList, query, favsOnly, favs) {
+  var q = String(query || "").trim().toLowerCase();
+  var tokens = q ? q.split(/\s+/) : [];
+  var favMap = {};
+  if (favsOnly) {
+    (favs || []).forEach(function (f) {
+      if (f && f.id) favMap[String(f.id)] = true;
+    });
+  }
+  return (epgList || []).filter(function (item) {
+    if (!item) return false;
+    if (favsOnly && !favMap[String(item.channel_id)]) return false;
+    if (tokens.length === 0) return true;
+    var name = String(item.name || "").toLowerCase();
+    var now = String(item.now || "").toLowerCase();
+    var next = String(item.next || "").toLowerCase();
+    var grp = String(item.group || "").toLowerCase();
+    return tokens.every(function (t) {
+      return name.indexOf(t) !== -1 || now.indexOf(t) !== -1 || next.indexOf(t) !== -1 || grp.indexOf(t) !== -1;
+    });
   });
 }
 
@@ -58,4 +83,57 @@ function resolveFavs(favs, kind, pool) {
     else out.push({ id: f.id, name: f.name, url: "", available: false });
   });
   return out;
+}
+
+function moveFav(favs, kind, id, delta) {
+  var k = favKey(kind, id);
+  var list = (favs || []).slice();
+  var matchIndices = [];
+  for (var i = 0; i < list.length; i++) {
+    if (list[i] && list[i].kind === kind) matchIndices.push(i);
+  }
+  var pos = -1;
+  for (var j = 0; j < matchIndices.length; j++) {
+    var f = list[matchIndices[j]];
+    if (favKey(f.kind, f.id) === k) {
+      pos = j;
+      break;
+    }
+  }
+  if (pos === -1) return list;
+  var nextPos = pos + delta;
+  if (nextPos < 0 || nextPos >= matchIndices.length) return list;
+  var idxA = matchIndices[pos];
+  var idxB = matchIndices[nextPos];
+  var tmp = list[idxA];
+  list[idxA] = list[idxB];
+  list[idxB] = tmp;
+  return list;
+}
+
+function parseBadge(name) {
+  var s = String(name || "");
+  if (/4k|2160p|uhd/i.test(s)) return "4K";
+  if (/1080p|fhd/i.test(s)) return "FHD";
+  if (/720p|hd/i.test(s)) return "HD";
+  if (/576p|sd/i.test(s)) return "SD";
+  return "";
+}
+
+function addToHistory(history, item, maxItems) {
+  maxItems = maxItems || 25;
+  if (!item || !item.id) return history || [];
+  var sid = String(item.id);
+  var list = (history || []).filter(function (x) {
+    return String(x.id) !== sid;
+  });
+  list.unshift({
+    id: item.id,
+    name: item.name || String(item.id),
+    kind: item.kind || "live",
+    logo: item.logo || "",
+    group: item.group || "",
+    timestamp: Date.now()
+  });
+  return list.slice(0, maxItems);
 }

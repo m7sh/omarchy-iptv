@@ -46,9 +46,11 @@ Item {
   }
   readonly property var groupList: [root.favGroup].concat(sourceGroups.filter(function(g) { return g !== root.favGroup }))
   readonly property var livePool: root.group === root.favGroup && svc ? svc.favItems("live") : (svc ? svc.channels : [])
-  readonly property var rows: root.tab === "vod"
-    ? (root.group === root.favGroup && svc ? svc.favItems("vod") : (svc ? svc.vod : []))
-    : Model.filterChannels(livePool, filterText, root.group === root.favGroup ? "All" : group)
+  readonly property var rows: {
+    if (root.tab === "favs") return Model.filterChannels(svc ? svc.favItems("live") : [], filterText, "All")
+    if (root.tab === "vod") return root.group === root.favGroup && svc ? svc.favItems("vod") : (svc ? svc.vod : [])
+    return Model.filterChannels(livePool, filterText, root.group === root.favGroup ? "All" : group)
+  }
   readonly property var selected: rows.length > 0 ? rows[Math.min(root.selectedIndex, rows.length - 1)] : null
   readonly property bool vodNeedsQuery: root.tab === "vod" && root.group !== root.favGroup && root.group === "All" && String(root.filterText).trim() === ""
 
@@ -203,7 +205,11 @@ Item {
             root.activateCurrent()
             event.accepted = true
           } else if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
-            root.setTab(root.tab === "live" ? "vod" : "live")
+            var tabs = ["live", "favs", "vod"]
+            var curIdx = tabs.indexOf(root.tab)
+            if (curIdx < 0) curIdx = 0
+            var delta = (event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier)) ? -1 : 1
+            root.setTab(tabs[(curIdx + delta + tabs.length) % tabs.length])
             event.accepted = true
           } else if (event.key === Qt.Key_F && (event.modifiers & Qt.ControlModifier)) {
             root.favCurrent()
@@ -254,6 +260,7 @@ Item {
             fontFamily: root.fontFamily
             options: [
               { value: "live", label: "Live" },
+              { value: "favs", label: "★ Favorites" },
               { value: "vod", label: "VOD" }
             ]
             onChanged: function(v) { root.setTab(v) }
@@ -272,6 +279,7 @@ Item {
 
         ListView {
           id: groupStrip
+          visible: root.tab !== "favs"
           width: parent.width
           height: Style.spacing.controlHeight
           orientation: ListView.Horizontal
@@ -306,20 +314,30 @@ Item {
           model: root.rows
           currentIndex: root.selectedIndex
           delegate: Item {
+            id: rowItem
             required property var modelData
             required property int index
             width: ListView.view ? ListView.view.width : 800
             height: Style.space(56)
+
+            readonly property bool isPlaying: svc && svc.currentPlayingId === String(modelData.id)
+            readonly property string badgeText: Model.parseBadge(modelData.name)
+
             Rectangle {
               anchors.fill: parent
               radius: root.cornerRadius
-              color: index === root.selectedIndex ? root.selectedBackground : "transparent"
+              color: rowItem.isPlaying
+                ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.25)
+                : (index === root.selectedIndex ? root.selectedBackground : "transparent")
+              border.color: rowItem.isPlaying ? Color.accent : "transparent"
+              border.width: rowItem.isPlaying ? 1 : 0
             }
             Row {
               anchors.fill: parent
               anchors.leftMargin: Style.space(12)
               anchors.rightMargin: Style.space(12)
               spacing: Style.space(10)
+
               Text {
                 width: Style.space(28)
                 anchors.verticalCenter: parent.verticalCenter
@@ -329,18 +347,82 @@ Item {
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.subtitle
               }
-              Column {
-                width: parent.width - Style.space(48)
+
+              Item {
+                width: Style.space(32)
+                height: Style.space(32)
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 0
+                Image {
+                  id: overlayLogoImg
+                  anchors.fill: parent
+                  source: modelData.logo || ""
+                  asynchronous: true
+                  fillMode: Image.PreserveAspectFit
+                  visible: status === Image.Ready && source !== ""
+                }
                 Text {
-                  width: parent.width
-                  textFormat: Text.PlainText
-                  text: modelData.name
-                  color: index === root.selectedIndex ? root.selectedText : root.foreground
+                  anchors.centerIn: parent
+                  visible: !overlayLogoImg.visible
+                  text: root.tab === "vod" ? "󰿎" : "󰑈"
+                  color: root.mutedText
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.subtitle
-                  elide: Text.ElideRight
+                  font.pixelSize: Style.font.body
+                }
+              }
+
+              Column {
+                width: parent.width - Style.space(90)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 2
+                Row {
+                  width: parent.width
+                  spacing: Style.space(6)
+                  Text {
+                    width: parent.width - (badgePill.visible ? badgePill.width + 8 : 0) - (playingPill.visible ? playingPill.width + 8 : 0)
+                    textFormat: Text.PlainText
+                    text: modelData.name
+                    color: index === root.selectedIndex ? root.selectedText : (rowItem.isPlaying ? Color.accent : root.foreground)
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.subtitle
+                    font.bold: rowItem.isPlaying
+                    elide: Text.ElideRight
+                  }
+                  Rectangle {
+                    id: badgePill
+                    visible: rowItem.badgeText !== ""
+                    radius: Style.space(3)
+                    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.15)
+                    implicitWidth: badgeTextLabel.implicitWidth + Style.space(6)
+                    implicitHeight: badgeTextLabel.implicitHeight + Style.space(2)
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                      id: badgeTextLabel
+                      anchors.centerIn: parent
+                      text: rowItem.badgeText
+                      color: index === root.selectedIndex ? root.selectedText : root.mutedText
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                    }
+                  }
+                  Rectangle {
+                    id: playingPill
+                    visible: rowItem.isPlaying
+                    radius: Style.space(3)
+                    color: Color.accent
+                    implicitWidth: playingPillLabel.implicitWidth + Style.space(6)
+                    implicitHeight: playingPillLabel.implicitHeight + Style.space(2)
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                      id: playingPillLabel
+                      anchors.centerIn: parent
+                      text: "▶ PLAYING"
+                      color: Color.background
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                    }
+                  }
                 }
                 Text {
                   width: parent.width
@@ -372,7 +454,7 @@ Item {
           width: parent.width
           horizontalAlignment: Text.AlignHCenter
           textFormat: Text.PlainText
-          text: "↑↓ move · ←→ group · Enter play · Ctrl+F favorite · Tab Live/VOD · type to filter · Esc close"
+          text: "↑↓ move · ←→ group · Enter play · Ctrl+F favorite · Tab Live/Favs/VOD · type to filter · Esc close"
           color: root.mutedText
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

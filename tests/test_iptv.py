@@ -35,11 +35,11 @@ class ParseM3u(unittest.TestCase):
 
 
 class SlimAndMatch(unittest.TestCase):
-    def test_slim_drops_url_and_logo(self):
+    def test_slim_drops_url_preserves_logo(self):
         row = {"id": "xc-1", "name": "A", "logo": "http://l", "url": "http://s/secret", "group": "UK"}
         out = sync.slim(row)
         self.assertNotIn("url", out)
-        self.assertNotIn("logo", out)
+        self.assertEqual(out.get("logo"), "http://l")
         self.assertEqual(out["name"], "A")
 
     def test_row_matches(self):
@@ -47,6 +47,12 @@ class SlimAndMatch(unittest.TestCase):
         self.assertTrue(sync.row_matches(row, "bbc", "UK"))
         self.assertFalse(sync.row_matches(row, "bbc", "US"))
         self.assertFalse(sync.row_matches(row, "itv", "UK"))
+
+    def test_multi_token_search(self):
+        row = {"name": "Star Movies (India) HD (1080p)", "group": "Movies"}
+        self.assertTrue(sync.row_matches(row, "star hd", "All"))
+        self.assertTrue(sync.row_matches(row, "star hd", "Movies"))
+        self.assertFalse(sync.row_matches(row, "star sports", "All"))
 
     def test_query_matches_group_when_not_narrowed(self):
         row = {"name": "BBC One", "group": "News"}
@@ -208,5 +214,35 @@ class ImportXmltv(unittest.TestCase):
                 sync.CACHE, sync.EPG_DB = old
 
 
+class ExportImportFavs(unittest.TestCase):
+    def test_export_and_import(self):
+        with tempfile.TemporaryDirectory() as d:
+            old_dir = sync.CONFIG_DIR
+            sync.CONFIG_DIR = d
+            fav_path = os.path.join(d, "favorites.json")
+            export_path = os.path.join(d, "export.json")
+            try:
+                # Write initial favs
+                initial = [{"kind": "live", "id": "ch1", "name": "Channel One"}]
+                with open(fav_path, "w") as f:
+                    json.dump(initial, f)
+
+                # Export
+                sync.export_favs(export_path)
+                self.assertTrue(os.path.exists(export_path))
+                with open(export_path) as f:
+                    self.assertEqual(json.load(f), initial)
+
+                # Modify initial, then re-import from export
+                with open(fav_path, "w") as f:
+                    json.dump([], f)
+                sync.import_favs(export_path)
+                with open(fav_path) as f:
+                    self.assertEqual(json.load(f), initial)
+            finally:
+                sync.CONFIG_DIR = old_dir
+
+
 if __name__ == "__main__":
     unittest.main()
+

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.sam-blakeman.iptv",
   "name": "IPTV",
-  "version": "1.0.0",
-  "author": "Sam Blakeman",
+  "version": "1.1.0",
+  "author": "Sam Blakeman, m7sh",
   "license": "MIT",
-  "description": "Single-provider IPTV browser for Omarchy (m3u / Xtream, Live + VOD, XMLTV EPG, favorites, fullscreen TV mode). Themed via shell tokens; playback in external mpv.",
+  "description": "Enhanced single-provider IPTV browser for Omarchy (m3u / Xtream, Live + VOD, XMLTV EPG, dedicated favorites with reordering & backup, channel logos, resolution badges, recent history, fullscreen TV mode). Themed via shell tokens; playback in external mpv.",
   "kinds": [
     "bar-widget",
     "overlay",

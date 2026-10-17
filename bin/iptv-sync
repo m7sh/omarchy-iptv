@@ -556,9 +556,9 @@ def load_json(path):
 
 # --- dumps (QML reads these) -------------------------------------------------
 
-# Logos and stream URLs stay in the 0600 cache. Dumps for the shell omit
-# both: urls carry Xtream passwords, and nothing in QML renders logos.
-DUMP_DROP = ("logo", "url")
+# Stream URLs stay in the 0600 cache (they carry Xtream passwords).
+# Dumps for the shell omit urls, but preserve logos.
+DUMP_DROP = ("url",)
 
 
 def slim(row):
@@ -571,11 +571,15 @@ def row_matches(row, query, group):
         return False
     if query:
         q = query.lower()
-        if q in (row.get("name") or "").lower():
+        tokens = q.split()
+        if not tokens:
             return True
-        # A category name is a search shortcut only while no group is picked;
-        # inside a group every row would trivially match its own group name.
-        return not narrowed and q in (row.get("group") or "Ungrouped").lower()
+        name = (row.get("name") or "").lower()
+        grp = (row.get("group") or "Ungrouped").lower()
+        if narrowed:
+            return all(t in name for t in tokens)
+        # Wide search: each token can match either name or category
+        return all(t in name or t in grp for t in tokens)
     return True
 
 
@@ -715,9 +719,58 @@ def dump_epg_now():
             continue
         cur, nxt = now_next(progs, now)
         if cur or nxt:
-            out.append({"channel_id": c.get("id"), "name": c.get("name"),
-                        "now": cur, "next": nxt})
+            out.append({
+                "channel_id": c.get("id"),
+                "name": c.get("name"),
+                "logo": c.get("logo") or "",
+                "group": c.get("group") or "",
+                "now": cur,
+                "next": nxt,
+            })
     json.dump(out, sys.stdout)
+
+
+def export_favs(dest):
+    dest = dest or os.path.join(CONFIG_DIR, "favorites-export.json")
+    fav_path = os.path.join(CONFIG_DIR, "favorites.json")
+    try:
+        with open(fav_path) as f:
+            data = json.load(f)
+    except Exception as e:
+        die(f"cannot read favorites: {e}")
+    try:
+        with open(dest, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        print(f"exported {len(data)} favorites to {dest}")
+    except Exception as e:
+        die(f"cannot write export file: {e}")
+
+
+def import_favs(src):
+    src = src or os.path.join(CONFIG_DIR, "favorites-export.json")
+    fav_path = os.path.join(CONFIG_DIR, "favorites.json")
+    try:
+        with open(src) as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            die("invalid favorites format: expected a JSON list")
+    except Exception as e:
+        die(f"cannot read import file: {e}")
+    if os.path.exists(fav_path):
+        bak = fav_path + f".bak.{int(time.time())}"
+        try:
+            with open(fav_path) as sf, open(bak, "w") as df:
+                df.write(sf.read())
+        except Exception:
+            pass
+    try:
+        with open(fav_path, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        print(f"imported {len(data)} favorites from {src}")
+    except Exception as e:
+        die(f"cannot write favorites: {e}")
 
 
 def main():
@@ -732,6 +785,8 @@ def main():
     g.add_argument("--dump-ids", metavar="IDS")
     g.add_argument("--play-url", action="store_true")
     g.add_argument("--write-provider", action="store_true")
+    g.add_argument("--export-favs", nargs="?", const="", default=None)
+    g.add_argument("--import-favs", nargs="?", const="", default=None)
     ap.add_argument("--group", default="")
     ap.add_argument("--query", default="")
     ap.add_argument("--limit", type=int, default=0)
@@ -763,6 +818,10 @@ def main():
         play_url(a.id)
     elif a.write_provider:
         write_provider(a)
+    elif a.export_favs is not None:
+        export_favs(a.export_favs)
+    elif a.import_favs is not None:
+        import_favs(a.import_favs)
     else:
         prov = load_provider()
         if not prov:

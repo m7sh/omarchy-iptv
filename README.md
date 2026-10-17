@@ -1,13 +1,19 @@
-# omarchy-iptv
+# omarchy-iptv (Enhanced)
 
-Lightweight single-provider IPTV browser for Omarchy Quattro.
+Lightweight, enhanced single-provider IPTV browser for Omarchy Linux with Hyprland and Quickshell.
 
 * **One provider**: m3u playlist **or** Xtream Codes (Live + VOD)
-* **EPG**: XMLTV (`epg` url for m3u, `xmltv.php` for Xtream), now/next only — no week-long grids in memory
-* **Themed**: zero hardcoded colors; every surface uses `Color` / `Style` / `Border` shell tokens, so theme switches apply live
-* **Light**: QML is browser-only; playback is an external `mpv` window. Stream URLs stay out of the shell. VOD is searched on demand rather than loaded in full.
+* **★ Dedicated Favorites**: Instant 1-click access tab, custom reordering (▲/▼), and export/import backup
+* **Channel Logos**: High-resolution logos rendered with aspect fit and clean fallback icons
+* **Quality Badges**: Automatic detection and display of stream quality tags (`4K`, `FHD`, `HD`, `SD`)
+* **Live EPG Guide**: XMLTV now/next guide with search, favorite stars, and "★ Favorites only" filter
+* **Active Playback & Stop Controls**: Status bar indicator, playing highlight, and quick 1-click stop button
+* **Smart Multi-Token Search**: Find channels fast (e.g. `star hd` matches `Star Movies (India) HD`)
+* **Recent History**: Automatically tracks recently watched channels for quick return
+* **Smooth MPV Playback**: Network buffering cache (`--cache=yes`, `--demuxer-max-bytes=64MiB`), Wayland app-id (`omarchy-iptv-player`), and optional `~/.config/omarchy-iptv/mpv.conf`
+* **Themed & Secure**: Zero hardcoded colors; themed via Omarchy shell tokens. Stream URLs and Xtream passwords stay in secure cache files and keyring (`secret-tool`).
 
-## Authorized use
+## Authorized Use
 
 This plugin is a player. It does not provide, sell, or host any streams. You must only connect playlists and Xtream accounts you are authorized to use (your own provider subscription, officially redistributable public lists, etc.).
 
@@ -16,7 +22,7 @@ Unauthorized access to copyrighted broadcasts is your responsibility, not the au
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/sam-blakeman/OmarchyIPTV.git --enable
+omarchy plugin add https://github.com/m7sh/OmarchyIPTV.git --enable
 omarchy pkg add mpv
 ```
 
@@ -28,7 +34,7 @@ Open the IPTV panel → **Setup**. Pick Xtream or M3U, fill the fields, **Save &
 
 The Xtream password is stored in the keyring (`secret-tool`), not in `provider.json`. Leave the password blank on later saves to keep the current one.
 
-Advanced: `~/.config/omarchy-iptv/provider.json` (mode 600) still works if you prefer files.
+Advanced: `~/.config/omarchy-iptv/provider.json` (mode 600) still works if you prefer files:
 
 ```json
 {"type": "xtream", "host": "http://host:8080", "username": "myuser"}
@@ -40,11 +46,13 @@ Advanced: `~/.config/omarchy-iptv/provider.json` (mode 600) still works if you p
 
 Optional `"user_agent"` key if the provider whitelists a player UA.
 
+### Optional Custom MPV Configuration
+
+You can place custom MPV player settings in `~/.config/omarchy-iptv/mpv.conf` (e.g. `hwdec=auto`, custom audio device, or keybindings). If present, it is automatically passed to mpv via `--include`.
+
 ### Limits
 
-Sync caps what a provider may send, so a broken or hostile server (or a gzip
-bomb) cannot exhaust memory. Larger responses abort with
-`provider response too large` in Setup.
+Sync caps what a provider may send, so a broken or hostile server (or a gzip bomb) cannot exhaust memory:
 
 | input | on the wire | after gzip |
 |---|---|---|
@@ -52,53 +60,50 @@ bomb) cannot exhaust memory. Larger responses abort with
 | Xtream JSON (per call) | 32 MiB | 128 MiB |
 | XMLTV guide | 256 MiB | 2 GiB (streamed into sqlite, never held whole) |
 
-Then press 󰑓, or:
-
-```sh
-~/.config/omarchy/plugins/io.github.sam-blakeman.iptv/bin/iptv-sync --sync
-```
-
 ## Use
 
-* Left click bar icon: quick-browse panel (Live / VOD / Guide / Setup)
-* Middle click bar icon: stop mpv
-* Right click bar icon: re-sync provider + EPG
-* ⛶ in the panel, or `omarchy-shell shell summon io.github.sam-blakeman.iptv`: fullscreen TV mode
-* Click / Enter on a row: play in external mpv
-* Guide rows play the live channel
-* VOD: pick a group or type to search (the full VOD catalogue is not loaded into the shell)
-* Group picker is searchable
-* Sync errors show in Setup (secrets redacted)
-* A stream mpv cannot open reports "Stream failed" in the bar and the mpv error in Setup
-* Setup shows cache age and EPG coverage; the provider re-syncs automatically once a day
+* **Left click bar icon**: open browser panel (**★ Favs / Live / VOD / Guide / Setup**)
+* **Middle click bar icon**: stop mpv playback immediately
+* **Right click bar icon**: re-sync provider + EPG
+* **⏹ Stop button in panel**: stop current stream with 1 click
+* **✕ Clear button in search**: instantly clear filter text
+* **⛶ in panel**: open fullscreen 10-foot TV browser mode
+* **Click on any channel row**: play in external mpv
+* **▲ / ▼ in Favs tab**: reorder favorite channels up or down
+* **Export / Import Favs in Setup**: backup favorites or restore on new machines
 
-### Favorites
+### Favorites & Backup
 
-☆/★ per row (or `Ctrl+F` in fullscreen). Stored as `{kind, id, name}` refs in
-`~/.config/omarchy-iptv/favorites.json` — no stream URLs. Pinned under
-★ Favorites.
+- Favorite channels are stored cleanly in `~/.config/omarchy-iptv/favorites.json`.
+- In Setup, click **Export Favs** to create a backup at `~/.config/omarchy-iptv/favorites-export.json`.
+- Click **Import Favs** to restore from the backup at any time.
 
-### Fullscreen TV mode
+### Fullscreen TV Mode
 
-Keyboard-first: ↑↓ move · ←→ group · Enter play · Ctrl+F favorite ·
-Tab Live/VOD · type to filter · Esc back out. Now/next refreshes from the
-cache every 5 minutes. Themed with the `[menu]` surface tokens.
+Keyboard-first navigation:
+- `↑ / ↓`: navigate channel list
+- `← / →`: cycle categories/groups
+- `Enter`: play selected stream in mpv
+- `Ctrl+F`: toggle favorite on selected channel
+- `Tab / Shift+Tab`: cycle between **Live**, **★ Favorites**, and **VOD**
+- `Type to filter`: instant smart search (multi-word support)
+- `Esc`: clear search filter or exit fullscreen mode
 
-## Layout
+## Architecture & Layout
 
 ```
-manifest.json   # kinds: [bar-widget, overlay, service], keepLoaded
-BarWidget.qml   # bar button + quick panel loader
-Panel.qml       # Live/VOD/Guide/Setup
-IptvOverlay.qml # fullscreen 10-foot browser
-IptvService.qml # shared singleton: data, mpv playback, favorites
-IptvModel.js    # filter/favorites helpers
-bin/iptv-sync   # python3 stdlib: m3u/Xtream fetch, XMLTV → sqlite, JSON dumps
-bin/iptv-play   # mpv wrapper (looks up stream URL by id)
+manifest.json   # Plugin manifest (kinds: [bar-widget, overlay, service])
+BarWidget.qml   # Status bar widget with playing status & quick panel loader
+Panel.qml       # Enhanced panel: Favs, Live, VOD, Guide, Setup
+IptvOverlay.qml # Fullscreen 10-foot TV browser with logos & quality badges
+IptvService.qml # Singleton service: process managers, playback state, favorites & history
+IptvModel.js    # Multi-token search, EPG filtering, badge parsing, favorite reordering
+bin/iptv-sync   # Python stdlib helper: m3u/Xtream parser, XMLTV sqlite guide, dumps, export/import
+bin/iptv-play   # Stream launcher with mpv buffering, Wayland app-id, and custom config
 ```
 
 Cache: `~/.cache/omarchy-iptv/` (`channels.json`, `vod.json`, `epg.db`, mode 600).
-Stream URLs never leave that cache into QML.
+Config: `~/.config/omarchy-iptv/` (`provider.json`, `favorites.json`, `history.json`, mode 600).
 
 ## Remove
 
@@ -107,6 +112,6 @@ omarchy plugin remove io.github.sam-blakeman.iptv
 rm -rf ~/.config/omarchy-iptv ~/.cache/omarchy-iptv
 ```
 
-## Future (out of scope)
+## Credits
 
-Series (`get_series`/`get_series_info`), full EPG grid, multi-provider.
+Forked from [sam-blakeman/OmarchyIPTV](https://github.com/sam-blakeman/OmarchyIPTV) and enhanced by [@m7sh](https://github.com/m7sh). Licensed under MIT.

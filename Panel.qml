@@ -15,9 +15,10 @@ Panel {
   readonly property var barIdentity: hostWidget || root
   readonly property var service: hostWidget && hostWidget.svc ? hostWidget.svc : null
 
-  property string tab: "live"
+  property string tab: (service && service.favorites && service.favorites.length > 0) ? "favs" : "live"
   property string query: ""
   property string group: "All"
+  property bool epgOnlyFavs: false
 
   readonly property var channels: service ? service.channels : []
   readonly property var vod: service ? service.vod : []
@@ -58,25 +59,35 @@ Panel {
   readonly property bool savingProvider: service ? service.savingProvider === true : false
 
   readonly property string favGroup: "★ Favorites"
+  readonly property string recentGroup: "🕒 Recent"
   readonly property var sourceGroups: {
     var g = root.tab === "vod"
       ? (service && service.vodGroups ? service.vodGroups : ["All"])
       : (service && service.liveGroups ? service.liveGroups : Model.groups(root.channels))
     return g && g.length ? g : ["All"]
   }
-  readonly property var groupList: [root.favGroup].concat(sourceGroups.filter(function(g) { return g !== root.favGroup }))
-  readonly property var livePool: root.group === root.favGroup && service ? service.favItems("live") : root.channels
-  readonly property var visibleChannels: Model.filterChannels(livePool, query, root.group === root.favGroup ? "All" : group)
+  readonly property var groupList: [root.favGroup, root.recentGroup].concat(sourceGroups.filter(function(g) { return g !== root.favGroup && g !== root.recentGroup }))
+  readonly property var livePool: {
+    if (root.group === root.favGroup && service) return service.favItems("live")
+    if (root.group === root.recentGroup && service) return service.history
+    return root.channels
+  }
+  readonly property var visibleFavs: Model.filterChannels(service ? service.favItems("live") : [], query, "All")
+  readonly property var visibleChannels: Model.filterChannels(livePool, query, (root.group === root.favGroup || root.group === root.recentGroup) ? "All" : group)
   readonly property var visibleVod: root.group === root.favGroup && service ? service.favItems("vod") : root.vod
+  readonly property var filteredEpg: Model.filterEpg(root.epgNow, query, root.epgOnlyFavs, service ? service.favorites : [])
   readonly property bool vodNeedsQuery: root.tab === "vod" && root.group !== root.favGroup && root.group === "All" && String(root.query).trim() === ""
   readonly property string emptyHint: {
     if (root.tab === "setup") return ""
     if (!root.providerConfigured) return "Add a provider in Setup."
     if (root.syncing) return "Syncing…"
+    if (root.tab === "favs" && root.visibleFavs.length === 0) {
+      return root.query ? "No favorite channels match \"" + root.query + "\"." : "No favorites yet. Click the ☆ icon on any channel to pin it here."
+    }
     if (root.tab === "vod" && root.vodNeedsQuery) return "Pick a group or type to search VOD."
     if (root.tab === "live" && root.visibleChannels.length === 0) return "No channels match."
     if (root.tab === "vod" && root.visibleVod.length === 0) return "No titles match."
-    if (root.tab === "epg" && root.epgNow.length === 0) return "No guide data yet. Sync from Setup."
+    if (root.tab === "epg" && root.filteredEpg.length === 0) return "No guide data matches."
     return ""
   }
 
@@ -154,6 +165,9 @@ Panel {
   function toggleFav(kind, item) {
     if (service && service.toggleFav) service.toggleFav(kind, item)
   }
+  function moveFav(kind, id, delta) {
+    if (service && service.moveFav) service.moveFav(kind, id, delta)
+  }
   function isFav(kind, id) {
     return service && service.isFav ? service.isFav(kind, id) : false
   }
@@ -204,10 +218,19 @@ Panel {
             Layout.fillWidth: true
             elide: Text.ElideRight
             textFormat: Text.PlainText
-            text: root.syncing ? "syncing…" : (root.savingProvider ? "saving…" : root.statusLine)
-            color: Color.muted
+            text: service && service.playing ? ("▶ " + service.currentPlayingTitle) : (root.syncing ? "syncing…" : (root.savingProvider ? "saving…" : root.statusLine))
+            color: service && service.playing ? Color.accent : Color.muted
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
+            font.bold: service && service.playing
+          }
+          PanelActionButton {
+            visible: service && service.playing
+            iconText: "⏹"
+            tooltipText: "Stop playback"
+            foreground: Color.urgent
+            fontFamily: root.contentFontFamily
+            onClicked: if (service) service.stop()
           }
           PanelActionButton {
             iconText: "⛶"
@@ -224,10 +247,22 @@ Panel {
           TextField {
             id: searchField
             Layout.fillWidth: true
-            placeholderText: "Search channels / VOD…"
+            placeholderText: root.tab === "epg" ? "Search guide programs & channels…" : (root.tab === "favs" ? "Search favorites…" : "Search channels & groups…")
             foreground: root.contentForeground
             font.family: root.contentFontFamily
+            text: root.query
             onTextChanged: root.query = text
+          }
+          PanelActionButton {
+            visible: searchField.text !== ""
+            iconText: "✕"
+            tooltipText: "Clear search"
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            onClicked: {
+              searchField.text = ""
+              root.query = ""
+            }
           }
           PanelActionButton {
             id: resyncBtn
@@ -246,6 +281,7 @@ Panel {
           foreground: root.contentForeground
           fontFamily: root.contentFontFamily
           options: [
+            { value: "favs", label: "★ Favs (" + (service ? service.favorites.length : 0) + ")" },
             { value: "live", label: "Live" },
             { value: "vod", label: "VOD" },
             { value: "epg", label: "Guide" },
@@ -277,6 +313,28 @@ Panel {
           }
         }
 
+        RowLayout {
+          visible: root.tab === "epg"
+          width: parent.width
+          spacing: Style.space(8)
+          Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: root.epgNow.length > 0 ? (root.filteredEpg.length + " guide listings") : "No guide data"
+            color: Color.muted
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+          }
+          Button {
+            text: root.epgOnlyFavs ? "★ Favs Only: ON" : "★ Favs Only: OFF"
+            tooltipText: "Show only favorite channels in guide"
+            selected: root.epgOnlyFavs
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            onClicked: root.epgOnlyFavs = !root.epgOnlyFavs
+          }
+        }
+
         Text {
           visible: root.emptyHint !== "" && root.tab !== "setup"
           width: parent.width
@@ -286,6 +344,15 @@ Panel {
           color: Color.muted
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.bodySmall
+        }
+
+        ListView {
+          visible: root.tab === "favs"
+          width: parent.width
+          height: parent.height - y
+          clip: true
+          model: root.visibleFavs
+          delegate: channelDelegate
         }
 
         ListView {
@@ -311,7 +378,7 @@ Panel {
           width: parent.width
           height: parent.height - y
           clip: true
-          model: root.epgNow
+          model: root.filteredEpg
           delegate: epgDelegate
         }
 
@@ -428,6 +495,53 @@ Panel {
 
             Text {
               width: parent.width
+              textFormat: Text.PlainText
+              text: "Favorites & Data"
+              color: root.contentForeground
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.bodySmall
+              font.bold: true
+            }
+
+            RowLayout {
+              width: parent.width
+              spacing: Style.space(8)
+              Button {
+                text: "Export Favs"
+                tooltipText: "Export favorites to ~/.config/omarchy-iptv/favorites-export.json"
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onClicked: if (service) service.exportFavorites("")
+              }
+              Button {
+                text: "Import Favs"
+                tooltipText: "Import favorites from ~/.config/omarchy-iptv/favorites-export.json"
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onClicked: if (service) service.importFavorites("")
+              }
+              Button {
+                text: "Clear Recents"
+                tooltipText: "Clear recently played channel history"
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onClicked: if (service) service.clearHistory()
+              }
+            }
+
+            Text {
+              visible: !!(service && service.favStatusMsg)
+              width: parent.width
+              wrapMode: Text.WordWrap
+              textFormat: Text.PlainText
+              text: service ? service.favStatusMsg : ""
+              color: Color.accent
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+            }
+
+            Text {
+              width: parent.width
               wrapMode: Text.WordWrap
               textFormat: Text.PlainText
               text: "★ " + (service ? service.favorites.length : 0) + " favorites · Playback in external mpv · Password stays in the keyring"
@@ -453,45 +567,158 @@ Panel {
   Component {
     id: channelDelegate
     Item {
+      id: channelRow
       required property var modelData
       width: ListView.view ? ListView.view.width : 600
-      height: Style.space(40)
-      Row {
+      height: Style.space(42)
+
+      readonly property bool isFav: root.isFav("live", modelData.id)
+      readonly property bool isPlaying: service && service.currentPlayingId === String(modelData.id)
+      readonly property string badgeText: Model.parseBadge(modelData.name)
+
+      Rectangle {
+        anchors.fill: parent
+        radius: Style.cornerRadius
+        color: channelRow.isPlaying ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.15) : "transparent"
+        border.color: channelRow.isPlaying ? Color.accent : "transparent"
+        border.width: channelRow.isPlaying ? 1 : 0
+      }
+
+      RowLayout {
         anchors.fill: parent
         anchors.leftMargin: Style.space(4)
+        anchors.rightMargin: Style.space(4)
         spacing: Style.space(4)
+
+        Row {
+          visible: root.tab === "favs" && !root.query
+          spacing: Style.space(2)
+          PanelActionButton {
+            iconText: "▲"
+            tooltipText: "Move up"
+            fontFamily: root.contentFontFamily
+            foreground: root.contentForeground
+            onClicked: root.moveFav("live", modelData.id, -1)
+          }
+          PanelActionButton {
+            iconText: "▼"
+            tooltipText: "Move down"
+            fontFamily: root.contentFontFamily
+            foreground: root.contentForeground
+            onClicked: root.moveFav("live", modelData.id, 1)
+          }
+        }
+
         PanelActionButton {
-          anchors.verticalCenter: parent.verticalCenter
-          iconText: root.isFav("live", modelData.id) ? "★" : "☆"
-          tooltipText: root.isFav("live", modelData.id) ? "Remove favorite" : "Add favorite"
-          foreground: root.isFav("live", modelData.id) ? Color.accent : root.contentForeground
+          iconText: channelRow.isFav ? "★" : "☆"
+          tooltipText: channelRow.isFav ? "Remove favorite" : "Add favorite"
+          foreground: channelRow.isFav ? Color.accent : root.contentForeground
           fontFamily: root.contentFontFamily
           onClicked: root.toggleFav("live", modelData)
         }
-        Text {
-          width: parent.width - Style.space(150)
-          elide: Text.ElideRight
-          textFormat: Text.PlainText
-          text: modelData.name + (root.nowFor(modelData) ? " — " + root.nowFor(modelData) : "")
-          color: modelData.available === false ? Color.muted : root.contentForeground
-          font.family: root.contentFontFamily
-          font.pixelSize: Style.font.body
-          anchors.verticalCenter: parent.verticalCenter
+
+        Item {
+          width: Style.space(24)
+          height: Style.space(24)
+          Layout.alignment: Qt.AlignVCenter
+          Image {
+            id: logoImg
+            anchors.fill: parent
+            source: modelData.logo || ""
+            asynchronous: true
+            fillMode: Image.PreserveAspectFit
+            visible: status === Image.Ready && source !== ""
+          }
+          Text {
+            anchors.centerIn: parent
+            visible: !logoImg.visible
+            text: "󰑈"
+            color: Color.muted
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+          }
         }
-        Text {
-          width: Style.space(110)
-          elide: Text.ElideRight
-          textFormat: Text.PlainText
-          text: root.nextFor(modelData) ? "▸ " + root.nextFor(modelData) : ""
-          color: Color.muted
-          font.family: root.contentFontFamily
-          font.pixelSize: Style.font.caption
-          anchors.verticalCenter: parent.verticalCenter
+
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 0
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(4)
+            Text {
+              Layout.fillWidth: true
+              elide: Text.ElideRight
+              textFormat: Text.PlainText
+              text: modelData.name
+              color: modelData.available === false ? Color.muted : (channelRow.isPlaying ? Color.accent : root.contentForeground)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.body
+              font.bold: channelRow.isPlaying
+            }
+            Rectangle {
+              visible: channelRow.badgeText !== ""
+              radius: Style.space(3)
+              color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.1)
+              implicitWidth: badgeLabel.implicitWidth + Style.space(6)
+              implicitHeight: badgeLabel.implicitHeight + Style.space(2)
+              Text {
+                id: badgeLabel
+                anchors.centerIn: parent
+                text: channelRow.badgeText
+                color: Color.muted
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption - 1
+                font.bold: true
+              }
+            }
+            Rectangle {
+              visible: channelRow.isPlaying
+              radius: Style.space(3)
+              color: Color.accent
+              implicitWidth: playingLabel.implicitWidth + Style.space(6)
+              implicitHeight: playingLabel.implicitHeight + Style.space(2)
+              Text {
+                id: playingLabel
+                anchors.centerIn: parent
+                text: "▶ PLAYING"
+                color: Color.background
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption - 1
+                font.bold: true
+              }
+            }
+          }
+          RowLayout {
+            Layout.fillWidth: true
+            visible: root.nowFor(modelData) !== "" || root.nextFor(modelData) !== ""
+            spacing: Style.space(4)
+            Text {
+              Layout.fillWidth: true
+              elide: Text.ElideRight
+              textFormat: Text.PlainText
+              text: root.nowFor(modelData)
+              color: Color.muted
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+            }
+            Text {
+              visible: root.nextFor(modelData) !== ""
+              Layout.maximumWidth: Style.space(130)
+              elide: Text.ElideRight
+              textFormat: Text.PlainText
+              text: "▸ " + root.nextFor(modelData)
+              color: Color.muted
+              opacity: 0.75
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
         }
       }
+
       MouseArea {
         anchors.fill: parent
-        anchors.leftMargin: Style.space(30)
+        anchors.leftMargin: Style.space(root.tab === "favs" && !root.query ? 84 : 40)
         cursorShape: Qt.PointingHandCursor
         onClicked: root.playChannel(modelData)
       }
@@ -501,36 +728,92 @@ Panel {
   Component {
     id: vodDelegate
     Item {
+      id: vodRow
       required property var modelData
       width: ListView.view ? ListView.view.width : 600
-      height: Style.space(34)
-      Row {
+      height: Style.space(38)
+
+      readonly property bool isFav: root.isFav("vod", modelData.id)
+      readonly property bool isPlaying: service && service.currentPlayingId === String(modelData.id)
+      readonly property string badgeText: Model.parseBadge(modelData.name)
+
+      Rectangle {
+        anchors.fill: parent
+        radius: Style.cornerRadius
+        color: vodRow.isPlaying ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.15) : "transparent"
+        border.color: vodRow.isPlaying ? Color.accent : "transparent"
+        border.width: vodRow.isPlaying ? 1 : 0
+      }
+
+      RowLayout {
         anchors.fill: parent
         anchors.leftMargin: Style.space(4)
+        anchors.rightMargin: Style.space(4)
         spacing: Style.space(4)
+
         PanelActionButton {
-          anchors.verticalCenter: parent.verticalCenter
-          iconText: root.isFav("vod", modelData.id) ? "★" : "☆"
-          tooltipText: root.isFav("vod", modelData.id) ? "Remove favorite" : "Add favorite"
-          foreground: root.isFav("vod", modelData.id) ? Color.accent : root.contentForeground
+          iconText: vodRow.isFav ? "★" : "☆"
+          tooltipText: vodRow.isFav ? "Remove favorite" : "Add favorite"
+          foreground: vodRow.isFav ? Color.accent : root.contentForeground
           fontFamily: root.contentFontFamily
           onClicked: root.toggleFav("vod", modelData)
         }
+
+        Item {
+          width: Style.space(24)
+          height: Style.space(24)
+          Layout.alignment: Qt.AlignVCenter
+          Image {
+            id: vodLogoImg
+            anchors.fill: parent
+            source: modelData.logo || ""
+            asynchronous: true
+            fillMode: Image.PreserveAspectFit
+            visible: status === Image.Ready && source !== ""
+          }
+          Text {
+            anchors.centerIn: parent
+            visible: !vodLogoImg.visible
+            text: "󰿎"
+            color: Color.muted
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+          }
+        }
+
         Text {
-          width: parent.width - Style.space(34)
+          Layout.fillWidth: true
           verticalAlignment: Text.AlignVCenter
           elide: Text.ElideRight
           textFormat: Text.PlainText
           text: modelData.name
-          color: modelData.available === false ? Color.muted : root.contentForeground
+          color: modelData.available === false ? Color.muted : (vodRow.isPlaying ? Color.accent : root.contentForeground)
           font.family: root.contentFontFamily
           font.pixelSize: Style.font.body
-          anchors.verticalCenter: parent.verticalCenter
+          font.bold: vodRow.isPlaying
+        }
+
+        Rectangle {
+          visible: vodRow.badgeText !== ""
+          radius: Style.space(3)
+          color: Qt.rgba(Color.foreground.r, Color.foreground.g, Color.foreground.b, 0.1)
+          implicitWidth: vodBadgeLabel.implicitWidth + Style.space(6)
+          implicitHeight: vodBadgeLabel.implicitHeight + Style.space(2)
+          Text {
+            id: vodBadgeLabel
+            anchors.centerIn: parent
+            text: vodRow.badgeText
+            color: Color.muted
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption - 1
+            font.bold: true
+          }
         }
       }
+
       MouseArea {
         anchors.fill: parent
-        anchors.leftMargin: Style.space(30)
+        anchors.leftMargin: Style.space(34)
         cursorShape: Qt.PointingHandCursor
         onClicked: root.playChannel(modelData)
       }
@@ -540,35 +823,106 @@ Panel {
   Component {
     id: epgDelegate
     Item {
+      id: epgRow
       required property var modelData
       width: ListView.view ? ListView.view.width : 600
-      height: Style.space(44)
-      Column {
+      height: Style.space(46)
+
+      readonly property bool isFav: root.isFav("live", modelData.channel_id)
+      readonly property bool isPlaying: service && service.currentPlayingId === String(modelData.channel_id)
+
+      Rectangle {
+        anchors.fill: parent
+        radius: Style.cornerRadius
+        color: epgRow.isPlaying ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.15) : "transparent"
+        border.color: epgRow.isPlaying ? Color.accent : "transparent"
+        border.width: epgRow.isPlaying ? 1 : 0
+      }
+
+      RowLayout {
         anchors.fill: parent
         anchors.leftMargin: Style.space(4)
-        spacing: 0
-        Text {
-          textFormat: Text.PlainText
-          text: modelData.name
-          color: root.contentForeground
-          font.family: root.contentFontFamily
-          font.pixelSize: Style.font.bodySmall
-          font.bold: true
-          elide: Text.ElideRight
-          width: parent.width
+        anchors.rightMargin: Style.space(4)
+        spacing: Style.space(6)
+
+        PanelActionButton {
+          iconText: epgRow.isFav ? "★" : "☆"
+          tooltipText: epgRow.isFav ? "Remove favorite" : "Add favorite"
+          foreground: epgRow.isFav ? Color.accent : root.contentForeground
+          fontFamily: root.contentFontFamily
+          onClicked: root.toggleFav("live", { id: modelData.channel_id, name: modelData.name, logo: modelData.logo, group: modelData.group })
         }
-        Text {
-          textFormat: Text.PlainText
-          text: (modelData.now ? modelData.now + "  " : "—  ") + (modelData.next ? "▸ " + modelData.next : "")
-          color: Color.muted
-          font.family: root.contentFontFamily
-          font.pixelSize: Style.font.caption
-          elide: Text.ElideRight
-          width: parent.width
+
+        Item {
+          width: Style.space(24)
+          height: Style.space(24)
+          Layout.alignment: Qt.AlignVCenter
+          Image {
+            id: epgLogoImg
+            anchors.fill: parent
+            source: modelData.logo || ""
+            asynchronous: true
+            fillMode: Image.PreserveAspectFit
+            visible: status === Image.Ready && source !== ""
+          }
+          Text {
+            anchors.centerIn: parent
+            visible: !epgLogoImg.visible
+            text: "󰑈"
+            color: Color.muted
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+          }
+        }
+
+        ColumnLayout {
+          Layout.fillWidth: true
+          spacing: 0
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(4)
+            Text {
+              Layout.fillWidth: true
+              textFormat: Text.PlainText
+              text: modelData.name
+              color: epgRow.isPlaying ? Color.accent : root.contentForeground
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.bodySmall
+              font.bold: true
+              elide: Text.ElideRight
+            }
+            Rectangle {
+              visible: epgRow.isPlaying
+              radius: Style.space(3)
+              color: Color.accent
+              implicitWidth: epgPlayingLabel.implicitWidth + Style.space(6)
+              implicitHeight: epgPlayingLabel.implicitHeight + Style.space(2)
+              Text {
+                id: epgPlayingLabel
+                anchors.centerIn: parent
+                text: "▶ PLAYING"
+                color: Color.background
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption - 1
+                font.bold: true
+              }
+            }
+          }
+          Text {
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: (modelData.now ? modelData.now + "  " : "—  ") + (modelData.next ? "▸ " + modelData.next : "")
+            color: Color.muted
+            font.family: root.contentFontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
         }
       }
+
       MouseArea {
         anchors.fill: parent
+        anchors.leftMargin: Style.space(36)
         cursorShape: Qt.PointingHandCursor
         onClicked: root.playById(modelData.channel_id, modelData.name)
       }

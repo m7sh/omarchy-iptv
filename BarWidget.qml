@@ -88,7 +88,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.playing ? "󰑈 ●" : "󰑈"
-    tooltipText: root.statusText
+    tooltipText: (root.playing ? ("Playing: " + (svc ? svc.currentPlayingTitle : "")) : root.statusText)
       + (root.favCount > 0 ? " · ★" + root.favCount : "")
       + " — click browse · middle stop · right sync"
     onPressed: function(b) {

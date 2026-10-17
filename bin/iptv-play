@@ -59,6 +59,14 @@ if [[ -r $CONF ]]; then
   [[ -n $UA ]] && EXTRA+=(--user-agent="$UA")
 fi
 
+MPV_CONF="$HOME/.config/omarchy-iptv/mpv.conf"
+if [[ -r $MPV_CONF ]]; then
+  EXTRA+=(--include="$MPV_CONF")
+fi
+
 exec mpv --title="omarchy-iptv: $TITLE" --force-media-title="$TITLE" \
   --force-window=yes --keep-open=no --ytdl=no --msg-level=all=error \
+  --cache=yes --demuxer-max-bytes=64MiB --demuxer-readahead-secs=20 \
+  --network-timeout=15 \
+  --wayland-app-id=omarchy-iptv-player --x11-name=omarchy-iptv-player \
   "${EXTRA[@]}" "$URL"
