@@ -22,7 +22,7 @@ Unauthorized access to copyrighted broadcasts is your responsibility, not the au
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/m7sh/OmarchyIPTV.git --enable
+omarchy plugin add https://github.com/m7sh/omarchy-iptv.git --enable
 omarchy pkg add mpv
 ```
 
@@ -114,4 +114,4 @@ rm -rf ~/.config/omarchy-iptv ~/.cache/omarchy-iptv
 
 ## Credits
 
-Forked from [sam-blakeman/OmarchyIPTV](https://github.com/sam-blakeman/OmarchyIPTV) and enhanced by [@m7sh](https://github.com/m7sh). Licensed under MIT.
+Maintained and enhanced by [@m7sh](https://github.com/m7sh). Based on OmarchyIPTV by Sam Blakeman. Licensed under MIT.
